@@ -27,9 +27,16 @@ export function Login() {
       });
       const { token, username: uname } = response.data;
 
-      // Fetch store info
-      const meRes = await authApi.me();
-      setAuth(token, uname, meRes.data.store_url);
+      // Store token first so subsequent requests are authenticated
+      setAuth(token, uname);
+
+      // Now fetch store info (token is in store, interceptor will use it)
+      try {
+        const meRes = await authApi.me();
+        setAuth(token, uname, meRes.data.store_url);
+      } catch {
+        // Login succeeded even if store info fetch fails
+      }
     } catch (err: unknown) {
       if (
         err &&
