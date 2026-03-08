@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: honor-labs-app
+    runtime: python
+    buildCommand: |
+      pip install -r backend/requirements.txt &&
+      cd frontend && npm install && npm run build
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: WC_SITE_URL
+        sync: false
+      - key: WC_CONSUMER_KEY
+        sync: false
+      - key: WC_CONSUMER_SECRET
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: APP_USERS
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: NODE_VERSION
+        value: "20.11.0"

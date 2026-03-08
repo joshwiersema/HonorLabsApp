@@ -2,8 +2,12 @@ from dotenv import load_dotenv
 
 load_dotenv()  # must come before other backend imports
 
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend.config import Settings
 from backend.routers import auth, customers, orders, products, proxy
@@ -32,3 +36,21 @@ app.include_router(proxy.router, prefix="/api")
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Serve frontend static files in production
+# ---------------------------------------------------------------------------
+
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+if FRONTEND_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
+
+    @app.get("/{path:path}")
+    async def serve_spa(request: Request, path: str) -> FileResponse:
+        """Serve the React SPA — all non-API routes get index.html."""
+        file_path = FRONTEND_DIR / path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(FRONTEND_DIR / "index.html")
