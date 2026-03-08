@@ -46,7 +46,7 @@ async def login(body: LoginRequest) -> LoginResponse:
     users = get_users()
     for user in users:
         if user.get("username") == body.username:
-            if verify_password(body.password, user.get("password_hash", "")):
+            if verify_password(body.password, user.get("password", "")):
                 token = create_token(body.username)
                 return LoginResponse(token=token, username=body.username)
             break

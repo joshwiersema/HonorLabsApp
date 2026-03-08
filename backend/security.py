@@ -1,11 +1,9 @@
 """JWT authentication and user management."""
 
-import json
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-import bcrypt
 import jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -24,20 +22,26 @@ def _jwt_expiry_hours() -> int:
 
 
 def get_users() -> list[dict]:
-    """Load users from APP_USERS env var (JSON array)."""
-    raw = os.environ.get("APP_USERS", "[]")
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
+    """Load users from APP_USERS env var.
+
+    Format: username:password,username:password,...
+    Example: josh:mypass123,brian.peck:otherpass
+    """
+    raw = os.environ.get("APP_USERS", "").strip()
+    if not raw:
         return []
+    users = []
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if ":" not in entry:
+            continue
+        username, password = entry.split(":", 1)
+        users.append({"username": username.strip(), "password": password.strip()})
+    return users
 
 
-def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
-
-
-def hash_password(plain: str) -> str:
-    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+def verify_password(plain: str, stored: str) -> bool:
+    return plain == stored
 
 
 def create_token(username: str) -> str:
