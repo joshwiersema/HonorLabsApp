@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { type ColumnDef, type PaginationState } from '@tanstack/react-table';
 import { MoreHorizontal, Eye, RefreshCw } from 'lucide-react';
 import { DataTable } from '@/components/shared/DataTable';

@@ -9,7 +9,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  type TooltipProps,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -39,14 +38,14 @@ function ChartSkeleton() {
   );
 }
 
-function RevenueTooltip({ active, payload, label }: TooltipProps<number, string>) {
+function RevenueTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ dataKey?: string; value?: number; color?: string }>; label?: string }) {
   if (!active || !payload || payload.length === 0) return null;
 
   return (
     <div className="rounded-lg border bg-background px-4 py-3 shadow-lg">
       <p className="mb-2 text-sm font-medium text-foreground">{label}</p>
       <div className="space-y-1">
-        {payload.map((entry) => (
+        {payload.map((entry: { dataKey?: string; value?: number; color?: string }) => (
           <div key={entry.dataKey} className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-1.5">
               <div
@@ -67,7 +66,7 @@ function RevenueTooltip({ active, payload, label }: TooltipProps<number, string>
   );
 }
 
-function BarTooltip({ active, payload, label }: TooltipProps<number, string>) {
+function BarTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ value?: number }>; label?: string }) {
   if (!active || !payload || payload.length === 0) return null;
 
   return (
@@ -102,11 +101,11 @@ export function RevenueAnalytics() {
     if (!doctorsData) return [];
     const doctors = doctorsData.doctors ?? [];
     return doctors
-      .filter((d) => d.total_spent > 0)
+      .filter((d) => parseFloat(String(d.total_spent)) > 0)
       .slice(0, 8)
       .map((d) => ({
         name: `Dr. ${d.last_name}`,
-        revenue: d.total_spent,
+        revenue: parseFloat(String(d.total_spent)),
       }))
       .sort((a, b) => b.revenue - a.revenue);
   }, [doctorsData]);

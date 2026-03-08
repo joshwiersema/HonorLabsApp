@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type PaginationState } from '@tanstack/react-table';
-import { ShoppingCart } from 'lucide-react';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { OrdersTable } from '@/components/orders/OrdersTable';
 import { OrderDetail } from '@/components/orders/OrderDetail';

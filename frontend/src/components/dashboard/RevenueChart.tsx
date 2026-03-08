@@ -6,7 +6,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  type TooltipProps,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,14 +42,14 @@ function CustomTooltip({
   active,
   payload,
   label,
-}: TooltipProps<number, string>) {
+}: { active?: boolean; payload?: Array<{ dataKey?: string; value?: number; color?: string }>; label?: string }) {
   if (!active || !payload || payload.length === 0) {
     return null;
   }
 
-  const wholesale = payload.find((p) => p.dataKey === 'wholesale');
-  const retail = payload.find((p) => p.dataKey === 'retail');
-  const total = payload.find((p) => p.dataKey === 'total');
+  const wholesale = payload.find((p: { dataKey?: string }) => p.dataKey === 'wholesale');
+  const retail = payload.find((p: { dataKey?: string }) => p.dataKey === 'retail');
+  const total = payload.find((p: { dataKey?: string }) => p.dataKey === 'total');
 
   return (
     <div className="rounded-lg border bg-background px-4 py-3 shadow-lg">

@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
 import { wcApi } from '@/api/woocommerce';
-import { honorLabsApi } from '@/api/honor-labs';
 import type { RevenueDataPoint } from '@/types/dashboard';
 import type { WcProduct } from '@/types/product';
 import { subDays, subMonths, format } from 'date-fns';

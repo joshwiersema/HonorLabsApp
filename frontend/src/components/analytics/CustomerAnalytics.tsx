@@ -5,7 +5,6 @@ import {
   Cell,
   Tooltip,
   ResponsiveContainer,
-  type TooltipProps,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -35,7 +34,7 @@ function ChartSkeleton() {
   );
 }
 
-function PieTooltip({ active, payload }: TooltipProps<number, string>) {
+function PieTooltip({ active, payload }: { active?: boolean; payload?: Array<{ name?: string; value?: number }> }) {
   if (!active || !payload || payload.length === 0) return null;
   return (
     <div className="rounded-lg border bg-background px-4 py-3 shadow-lg">
@@ -86,7 +85,7 @@ export function CustomerAnalytics() {
 
   const topCustomers = useMemo(() => {
     return [...patients]
-      .sort((a, b) => b.total_spent - a.total_spent)
+      .sort((a, b) => parseFloat(String(b.total_spent)) - parseFloat(String(a.total_spent)))
       .slice(0, 10);
   }, [patients]);
 

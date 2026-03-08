@@ -9,7 +9,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  type TooltipProps,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -35,12 +34,12 @@ function ChartSkeleton() {
   );
 }
 
-function SimpleTooltip({ active, payload, label }: TooltipProps<number, string>) {
+function SimpleTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ dataKey?: string; value?: number; color?: string }>; label?: string }) {
   if (!active || !payload || payload.length === 0) return null;
   return (
     <div className="rounded-lg border bg-background px-4 py-3 shadow-lg">
       <p className="mb-1 text-sm font-medium text-foreground">{label}</p>
-      {payload.map((entry) => (
+      {payload.map((entry: { dataKey?: string; value?: number; color?: string }) => (
         <div key={entry.dataKey} className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
           <span className="text-xs text-muted-foreground capitalize">{String(entry.dataKey)}:</span>

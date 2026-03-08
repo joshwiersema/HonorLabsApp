@@ -10,7 +10,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  type TooltipProps,
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -27,7 +26,7 @@ function ChartSkeleton() {
   );
 }
 
-function BarTooltip({ active, payload, label }: TooltipProps<number, string>) {
+function BarTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ dataKey?: string; value?: number }>; label?: string }) {
   if (!active || !payload || payload.length === 0) return null;
   return (
     <div className="rounded-lg border bg-background px-4 py-3 shadow-lg">
@@ -41,7 +40,7 @@ function BarTooltip({ active, payload, label }: TooltipProps<number, string>) {
   );
 }
 
-function PieTooltip({ active, payload }: TooltipProps<number, string>) {
+function PieTooltip({ active, payload }: { active?: boolean; payload?: Array<{ name?: string; value?: number }> }) {
   if (!active || !payload || payload.length === 0) return null;
   const { name, value } = payload[0];
   return (
