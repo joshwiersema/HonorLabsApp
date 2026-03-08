@@ -53,6 +53,22 @@ async def login(body: LoginRequest) -> LoginResponse:
     raise HTTPException(status_code=401, detail="Invalid username or password")
 
 
+@router.get("/debug")
+async def debug_auth():
+    """Temporary debug endpoint — shows auth config status (no secrets)."""
+    import os
+    raw = os.environ.get("APP_USERS", "<NOT SET>")
+    users = get_users()
+    return {
+        "users_env_var_length": len(raw),
+        "users_env_var_first_50": raw[:50] if raw != "<NOT SET>" else raw,
+        "parsed_user_count": len(users),
+        "parsed_usernames": [u.get("username", "?") for u in users],
+        "jwt_secret_set": bool(os.environ.get("JWT_SECRET")),
+        "wc_site_url_set": bool(os.environ.get("WC_SITE_URL")),
+    }
+
+
 @router.get("/me", response_model=MeResponse)
 async def me(username: str = Depends(get_current_user)) -> MeResponse:
     """Return current user info + WooCommerce connection status."""
