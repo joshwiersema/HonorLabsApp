@@ -238,13 +238,10 @@ class CustomerStats(BaseModel):
 
 async def _fetch_honor_labs_applications(
     client: WooCommerceClient,
-) -> list[dict]:
+) -> tuple[list[dict], str]:
     """Fetch pending doctor applications from the honor-labs REST API.
 
-    The WC customers endpoint may not return new applicants (wrong role,
-    meta not visible, etc.).  The honor-labs endpoint queries wp_usermeta
-    directly so it always finds them.  We only need pending ones here
-    because approved/rejected doctors are already in the WC customer list.
+    Returns (applications, status_message) so callers can surface diagnostics.
     """
     try:
         resp = await client.request(
@@ -253,11 +250,15 @@ async def _fetch_honor_labs_applications(
             params={"per_page": 100, "status": "pending"},
             query_auth=True,
         )
-    except httpx.RequestError:
-        return []  # non-fatal — WC data is the baseline
+    except httpx.RequestError as exc:
+        return [], f"connection_error: {exc}"
     if resp.status_code != 200:
-        return []
-    return resp.json()
+        snippet = resp.text[:200] if resp.text else "no body"
+        return [], f"http_{resp.status_code}: {snippet}"
+    data = resp.json()
+    if not isinstance(data, list):
+        return [], f"unexpected_response: {type(data).__name__}: {str(data)[:200]}"
+    return data, f"ok ({len(data)} pending)"
 
 
 @router.get("/doctors")
@@ -268,7 +269,7 @@ async def list_doctors(search: str = Query("", description="Filter by name or em
     # Fetch WC customers and honor-labs pending applications in parallel
     wc_task = fetch_all_customers(client)
     hl_task = _fetch_honor_labs_applications(client)
-    all_customers, pending_apps = await asyncio.gather(wc_task, hl_task)
+    all_customers, (pending_apps, hl_status) = await asyncio.gather(wc_task, hl_task)
 
     seen_ids: set[int] = set()
     doctors_raw: list[dict] = []
@@ -322,7 +323,11 @@ async def list_doctors(search: str = Query("", description="Filter by name or em
         return build_doctor_summary(doc, orders)
 
     doctors = list(await asyncio.gather(*[_enrich(d) for d in doctors_raw]))
-    return {"doctors": doctors, "total": len(doctors)}
+    return {
+        "doctors": doctors,
+        "total": len(doctors),
+        "_honor_labs_applications": hl_status,
+    }
 
 
 @router.get("/doctors/{doctor_id}")
@@ -584,7 +589,7 @@ async def customer_stats():
 
     wc_task = fetch_all_customers(client)
     hl_task = _fetch_honor_labs_applications(client)
-    all_customers, pending_apps = await asyncio.gather(wc_task, hl_task)
+    all_customers, (pending_apps, _hl_status) = await asyncio.gather(wc_task, hl_task)
 
     doctor_count = 0
     patient_count = 0
