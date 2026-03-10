@@ -34,7 +34,7 @@ export function useApproveDoctor() {
       await qc.cancelQueries({ queryKey: ['doctors'] });
       // Optimistically update doctor status in all doctor list caches
       const queries = qc.getQueryCache().findAll({ queryKey: ['doctors'] });
-      const snapshots: Array<{ key: unknown[]; data: unknown }> = [];
+      const snapshots: Array<{ key: readonly unknown[]; data: unknown }> = [];
       for (const query of queries) {
         snapshots.push({ key: query.queryKey, data: query.state.data });
         qc.setQueryData(query.queryKey, (old: { doctors: Doctor[]; total: number } | undefined) => {
@@ -73,7 +73,7 @@ export function useRejectDoctor() {
     onMutate: async (doctorId) => {
       await qc.cancelQueries({ queryKey: ['doctors'] });
       const queries = qc.getQueryCache().findAll({ queryKey: ['doctors'] });
-      const snapshots: Array<{ key: unknown[]; data: unknown }> = [];
+      const snapshots: Array<{ key: readonly unknown[]; data: unknown }> = [];
       for (const query of queries) {
         snapshots.push({ key: query.queryKey, data: query.state.data });
         qc.setQueryData(query.queryKey, (old: { doctors: Doctor[]; total: number } | undefined) => {

@@ -19,7 +19,12 @@ def get_client() -> WooCommerceClient:
 
 
 async def _proxy(
-    namespace: str, path: str, request: Request, *, forward_pagination: bool = False
+    namespace: str,
+    path: str,
+    request: Request,
+    *,
+    forward_pagination: bool = False,
+    query_auth: bool = False,
 ) -> JSONResponse:
     """Shared proxy logic for all namespaces."""
     client = get_client()
@@ -34,7 +39,11 @@ async def _proxy(
 
     try:
         response = await client.request(
-            request.method, f"{namespace}/{path}", params=params, json_data=body
+            request.method,
+            f"{namespace}/{path}",
+            params=params,
+            json_data=body,
+            query_auth=query_auth,
         )
     except httpx.RequestError as exc:
         raise HTTPException(
@@ -99,5 +108,9 @@ async def wp_proxy(path: str, request: Request) -> JSONResponse:
     "/honor-labs/{path:path}", methods=["GET", "POST", "PUT", "DELETE"]
 )
 async def honor_labs_proxy(path: str, request: Request) -> JSONResponse:
-    """Proxy requests to Honor Labs custom REST API."""
-    return await _proxy("honor-labs", path, request)
+    """Proxy requests to Honor Labs custom REST API.
+
+    Uses query param auth because the honor-labs WP endpoints validate
+    WC consumer_key/consumer_secret via $_GET, not HTTP Basic Auth.
+    """
+    return await _proxy("honor-labs", path, request, query_auth=True)

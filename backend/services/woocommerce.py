@@ -10,22 +10,49 @@ class WooCommerceClient:
         self.base_url = credentials.site_url.rstrip("/")
         self.auth = (credentials.consumer_key, credentials.consumer_secret)
 
+    @property
+    def auth_params(self) -> dict[str, str]:
+        """Return credentials as query params for non-WC REST endpoints.
+
+        WooCommerce's built-in endpoints accept HTTP Basic Auth, but custom
+        WordPress REST endpoints (honor-labs/v1/*) expect consumer_key and
+        consumer_secret as query parameters.
+        """
+        return {
+            "consumer_key": self.auth[0],
+            "consumer_secret": self.auth[1],
+        }
+
     async def request(
         self,
         method: str,
         path: str,
         params: dict | None = None,
         json_data: dict | None = None,
+        *,
+        query_auth: bool = False,
     ) -> httpx.Response:
-        """Make authenticated request to WC/WP REST API."""
+        """Make authenticated request to WC/WP REST API.
+
+        Args:
+            query_auth: If True, send credentials as query params instead of
+                        HTTP Basic Auth (required for non-WC REST endpoints).
+        """
         url = f"{self.base_url}/wp-json/{path}"
+        effective_params = dict(params or {})
+        auth = self.auth
+
+        if query_auth:
+            effective_params.update(self.auth_params)
+            auth = None  # type: ignore[assignment]
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.request(
                 method=method,
                 url=url,
-                params=params,
+                params=effective_params or None,
                 json=json_data,
-                auth=self.auth,
+                auth=auth,
             )
             return response
 

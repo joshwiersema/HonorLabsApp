@@ -405,17 +405,40 @@ async def get_patient(patient_id: int):
 
 @router.post("/doctors/{doctor_id}/approve")
 async def approve_doctor(doctor_id: int):
-    """Approve a pending doctor by setting ALL approval meta fields.
+    """Approve a pending doctor via the WordPress doctor-onboarding plugin.
 
-    Sets BOTH B2BKing AND doctor-onboarding plugin meta so the doctor is
-    recognised as approved everywhere:
-      - b2bking_account_approved = 'yes'     (B2BKing core check)
-      - b2bking_account_approval = 'approved' (doctor-onboarding plugin)
-      - b2bking_b2buser = 'yes'
-      - b2bking_customergroup = DOCTOR_GROUP (599)
+    Calls the honor-labs REST endpoint which runs hl_approve_doctor(),
+    handling ALL facets of approval:
+      - B2BKing meta (account_approved, account_approval, b2buser, group)
+      - Referral code generation
+      - B2BKing action hooks & transient cache busting
+      - Approval email via the plugin's email watcher
+
+    Falls back to direct WC meta update if the WP endpoint is unavailable.
     """
     client = get_client()
 
+    # Try the WordPress plugin endpoint first (comprehensive approval)
+    try:
+        resp = await client.request(
+            "POST",
+            f"honor-labs/v1/doctor-applications/{doctor_id}/approve",
+            query_auth=True,
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Upstream request failed: {exc}"
+        ) from exc
+
+    if resp.status_code == 200:
+        data = resp.json()
+        return {
+            "status": "approved",
+            "doctor_id": doctor_id,
+            "referral_code": data.get("referral_code", ""),
+        }
+
+    # Fallback: set meta directly via WC API if the WP endpoint failed
     payload = {
         "meta_data": [
             {"key": "b2bking_account_approved", "value": "yes"},
@@ -444,9 +467,29 @@ async def approve_doctor(doctor_id: int):
 
 @router.post("/doctors/{doctor_id}/reject")
 async def reject_doctor(doctor_id: int):
-    """Reject a pending doctor by setting both B2BKing and plugin meta."""
+    """Reject a pending doctor via the WordPress doctor-onboarding plugin.
+
+    Calls the honor-labs REST endpoint which handles rejection email
+    and meta updates. Falls back to direct WC meta if unavailable.
+    """
     client = get_client()
 
+    # Try the WordPress plugin endpoint first
+    try:
+        resp = await client.request(
+            "POST",
+            f"honor-labs/v1/doctor-applications/{doctor_id}/reject",
+            query_auth=True,
+        )
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"Upstream request failed: {exc}"
+        ) from exc
+
+    if resp.status_code == 200:
+        return {"status": "rejected", "doctor_id": doctor_id}
+
+    # Fallback: set meta directly via WC API
     payload = {
         "meta_data": [
             {"key": "b2bking_account_approved", "value": "no"},
