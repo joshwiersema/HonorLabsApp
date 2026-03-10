@@ -56,8 +56,8 @@ export function useApproveDoctor() {
       }
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['doctors'] });
-      qc.invalidateQueries({ queryKey: ['doctor'] });
+      qc.invalidateQueries({ queryKey: ['doctors'], refetchType: 'none' });
+      qc.invalidateQueries({ queryKey: ['doctor'], refetchType: 'none' });
       qc.invalidateQueries({ queryKey: ['customerStats'] });
     },
   });
@@ -94,8 +94,8 @@ export function useRejectDoctor() {
       }
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ['doctors'] });
-      qc.invalidateQueries({ queryKey: ['doctor'] });
+      qc.invalidateQueries({ queryKey: ['doctors'], refetchType: 'none' });
+      qc.invalidateQueries({ queryKey: ['doctor'], refetchType: 'none' });
       qc.invalidateQueries({ queryKey: ['customerStats'] });
     },
   });

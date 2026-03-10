@@ -55,8 +55,8 @@ export function useUpdateProduct() {
       }
 
       // Also invalidate for background consistency
-      qc.invalidateQueries({ queryKey: ['products'] });
-      qc.invalidateQueries({ queryKey: ['product'] });
+      qc.invalidateQueries({ queryKey: ['products'], refetchType: 'none' });
+      qc.invalidateQueries({ queryKey: ['product'], refetchType: 'none' });
     },
   });
 }
