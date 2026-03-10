@@ -143,7 +143,9 @@ def build_doctor_summary(customer: dict, orders: list[dict] | None = None) -> di
 
     if b2b_approved == "yes" or b2b_approval == "approved":
         doctor_status = "approved"
-    elif b2b_approved == "no" or b2b_approval == "rejected":
+    elif b2b_approval == "rejected":
+        # Only explicit rejection — b2bking_account_approved="no" is the
+        # default for ALL new accounts, not a rejection signal.
         doctor_status = "rejected"
     else:
         doctor_status = "pending"
