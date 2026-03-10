@@ -236,16 +236,47 @@ class CustomerStats(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+async def _fetch_honor_labs_applications(
+    client: WooCommerceClient,
+) -> list[dict]:
+    """Fetch pending doctor applications from the honor-labs REST API.
+
+    The WC customers endpoint may not return new applicants (wrong role,
+    meta not visible, etc.).  The honor-labs endpoint queries wp_usermeta
+    directly so it always finds them.  We only need pending ones here
+    because approved/rejected doctors are already in the WC customer list.
+    """
+    try:
+        resp = await client.request(
+            "GET",
+            "honor-labs/v1/doctor-applications",
+            params={"per_page": 100, "status": "pending"},
+            query_auth=True,
+        )
+    except httpx.RequestError:
+        return []  # non-fatal — WC data is the baseline
+    if resp.status_code != 200:
+        return []
+    return resp.json()
+
+
 @router.get("/doctors")
 async def list_doctors(search: str = Query("", description="Filter by name or email")):
     """List all doctors (B2BKing group OR doctor onboarding applicants) with order stats."""
     client = get_client()
-    all_customers = await fetch_all_customers(client)
+
+    # Fetch WC customers and honor-labs pending applications in parallel
+    wc_task = fetch_all_customers(client)
+    hl_task = _fetch_honor_labs_applications(client)
+    all_customers, pending_apps = await asyncio.gather(wc_task, hl_task)
+
     seen_ids: set[int] = set()
     doctors_raw: list[dict] = []
+
+    # 1. Doctors from WC customer list (existing approved doctors + any
+    #    applicants that WC happens to return)
     for c in all_customers:
         meta = c.get("meta_data", [])
-        # Include if in doctor group OR if they applied through doctor onboarding
         is_doctor = (
             get_customer_group(meta) == DOCTOR_GROUP
             or is_doctor_applicant(meta)
@@ -255,6 +286,36 @@ async def list_doctors(search: str = Query("", description="Filter by name or em
             if cid not in seen_ids:
                 seen_ids.add(cid)
                 doctors_raw.append(c)
+
+    # 2. Merge pending applications that WC missed (new applicants without
+    #    the customer role or whose meta WC didn't expose)
+    for app in pending_apps:
+        aid = app.get("id") or app.get("user_id")
+        if aid and aid not in seen_ids:
+            if not search or matches_search(app, search):
+                seen_ids.add(aid)
+                # Wrap in the same shape build_doctor_summary expects
+                doctors_raw.append({
+                    "id": aid,
+                    "email": app.get("email", ""),
+                    "first_name": app.get("first_name", ""),
+                    "last_name": app.get("last_name", ""),
+                    "username": app.get("email", ""),
+                    "date_created": app.get("date_applied", ""),
+                    "avatar_url": "",
+                    "billing": {},
+                    "shipping": {},
+                    "meta_data": [
+                        {"key": "hl_npi_number", "value": app.get("npi_number", "")},
+                        {"key": "hl_practice_name", "value": app.get("practice_name", "")},
+                        {"key": "hl_specialty", "value": app.get("specialty", "")},
+                        {"key": "hl_phone", "value": app.get("phone", "")},
+                        {"key": "hl_practice_state", "value": app.get("practice_state", "")},
+                        {"key": "hl_license_number", "value": app.get("license_number", "")},
+                        {"key": "hl_application_date", "value": app.get("date_applied", "")},
+                        {"key": "b2bking_account_approval", "value": app.get("status", "pending")},
+                    ],
+                })
 
     async def _enrich(doc: dict) -> dict:
         orders = await fetch_customer_orders(client, doc["id"])
@@ -520,7 +581,10 @@ async def reject_doctor(doctor_id: int):
 async def customer_stats():
     """Return aggregate counts: doctors, patients, pending doctors."""
     client = get_client()
-    all_customers = await fetch_all_customers(client)
+
+    wc_task = fetch_all_customers(client)
+    hl_task = _fetch_honor_labs_applications(client)
+    all_customers, pending_apps = await asyncio.gather(wc_task, hl_task)
 
     doctor_count = 0
     patient_count = 0
@@ -541,6 +605,14 @@ async def customer_stats():
                 pending_doctors += 1
         elif group == PATIENT_GROUP:
             patient_count += 1
+
+    # Add pending applicants that WC missed
+    for app in pending_apps:
+        aid = app.get("id") or app.get("user_id")
+        if aid and aid not in seen_doctor_ids:
+            seen_doctor_ids.add(aid)
+            doctor_count += 1
+            pending_doctors += 1
 
     return CustomerStats(
         doctor_count=doctor_count,
