@@ -80,7 +80,9 @@ export function ProductEditForm({ product, open, onClose, onSave, isSaving }: Pr
   const [saveResult, setSaveResult] = useState<'success' | 'error' | null>(null);
   const [savedBaseline, setSavedBaseline] = useState<FormState | null>(null);
 
-  // Reset form when product changes or dialog opens
+  // Reset form only when the dialog opens or when switching to a different product.
+  // Intentionally excluding the full `product` object to prevent resetting the form
+  // (and clearing the success message) when the cache updates after a save.
   useEffect(() => {
     if (open && product) {
       setForm(buildInitialState(product));
@@ -88,7 +90,8 @@ export function ProductEditForm({ product, open, onClose, onSave, isSaving }: Pr
       setErrors({});
       setSaveResult(null);
     }
-  }, [open, product]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, product?.id]);
 
   // Auto-dismiss success message
   useEffect(() => {

@@ -41,6 +41,19 @@ async def _proxy(
             status_code=502, detail=f"Upstream request failed: {exc}"
         ) from exc
 
+    # Don't pass through 401/403 from upstream — those would trigger
+    # the frontend's JWT logout interceptor.  Map to 502 Bad Gateway.
+    status = response.status_code
+    if status in (401, 403):
+        return JSONResponse(
+            content={
+                "detail": f"Upstream authentication error ({status}). "
+                "The WordPress endpoint may require different credentials "
+                "or may not exist."
+            },
+            status_code=502,
+        )
+
     # Try to parse JSON; fall back to plain text on decode errors
     try:
         content = response.json()

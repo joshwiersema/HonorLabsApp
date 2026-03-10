@@ -405,10 +405,12 @@ async def get_patient(patient_id: int):
 
 @router.post("/doctors/{doctor_id}/approve")
 async def approve_doctor(doctor_id: int):
-    """Approve a pending doctor by setting B2BKing meta fields directly.
+    """Approve a pending doctor by setting ALL approval meta fields.
 
-    Updates meta keys via WC REST API that B2BKing reads:
-      - b2bking_account_approved = 'yes'  (THE key B2BKing checks)
+    Sets BOTH B2BKing AND doctor-onboarding plugin meta so the doctor is
+    recognised as approved everywhere:
+      - b2bking_account_approved = 'yes'     (B2BKing core check)
+      - b2bking_account_approval = 'approved' (doctor-onboarding plugin)
       - b2bking_b2buser = 'yes'
       - b2bking_customergroup = DOCTOR_GROUP (599)
     """
@@ -417,6 +419,7 @@ async def approve_doctor(doctor_id: int):
     payload = {
         "meta_data": [
             {"key": "b2bking_account_approved", "value": "yes"},
+            {"key": "b2bking_account_approval", "value": "approved"},
             {"key": "b2bking_b2buser", "value": "yes"},
             {"key": "b2bking_customergroup", "value": DOCTOR_GROUP},
         ]
@@ -441,12 +444,13 @@ async def approve_doctor(doctor_id: int):
 
 @router.post("/doctors/{doctor_id}/reject")
 async def reject_doctor(doctor_id: int):
-    """Reject a pending doctor by setting B2BKing meta field directly."""
+    """Reject a pending doctor by setting both B2BKing and plugin meta."""
     client = get_client()
 
     payload = {
         "meta_data": [
             {"key": "b2bking_account_approved", "value": "no"},
+            {"key": "b2bking_account_approval", "value": "rejected"},
         ]
     }
     try:

@@ -9,6 +9,7 @@ export function useCommissions(params?: Record<string, unknown>) {
       const res = await honorLabsApi.commissions.list(params);
       return res.data as Commission[];
     },
+    retry: false,
   });
 }
 
@@ -19,6 +20,7 @@ export function useCommissionSummary(params?: Record<string, unknown>) {
       const res = await honorLabsApi.commissions.summary(params);
       return res.data as CommissionSummary;
     },
+    retry: false,
   });
 }
 
@@ -29,5 +31,6 @@ export function useCommissionSettings() {
       const res = await honorLabsApi.commissions.settings();
       return res.data as CommissionSettings;
     },
+    retry: false,
   });
 }
