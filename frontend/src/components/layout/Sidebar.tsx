@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -9,6 +10,7 @@ import {
   BarChart3,
   Settings,
   LogOut,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NAV_ITEMS } from '@/utils/constants';
@@ -25,15 +27,25 @@ const iconMap = {
   Settings,
 } as const;
 
-export function Sidebar() {
+interface SidebarProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export function Sidebar({ open, onClose }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const username = useAuthStore((s) => s.username);
   const storeUrl = useAuthStore((s) => s.storeUrl);
   const logout = useAuthStore((s) => s.logout);
 
-  return (
-    <aside className="flex h-screen w-60 flex-col bg-sidebar text-sidebar-foreground">
+  // Auto-close sidebar on navigation (mobile)
+  useEffect(() => {
+    onClose();
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sidebarContent = (
+    <>
       {/* Logo / Brand */}
       <div className="flex items-center gap-3 px-6 py-6">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-primary">
@@ -43,6 +55,13 @@ export function Sidebar() {
           <span className="text-base font-bold tracking-tight">Honor Labs</span>
           <span className="text-xs text-sidebar-foreground/60">Control Panel</span>
         </div>
+        <button
+          onClick={onClose}
+          className="ml-auto rounded-md p-1.5 text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors md:hidden"
+          aria-label="Close menu"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Navigation */}
@@ -100,6 +119,35 @@ export function Sidebar() {
           </button>
         </div>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop sidebar - always visible */}
+      <aside className="hidden md:flex h-screen w-60 flex-col bg-sidebar text-sidebar-foreground">
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile overlay */}
+      <div className="md:hidden">
+        {/* Backdrop */}
+        {open && (
+          <div
+            className="fixed inset-0 z-40 bg-black/50"
+            onClick={onClose}
+          />
+        )}
+        {/* Sliding sidebar */}
+        <aside
+          className={cn(
+            'fixed inset-y-0 left-0 z-50 flex w-60 flex-col bg-sidebar text-sidebar-foreground transform transition-transform duration-200 ease-in-out',
+            open ? 'translate-x-0' : '-translate-x-full'
+          )}
+        >
+          {sidebarContent}
+        </aside>
+      </div>
+    </>
   );
 }
