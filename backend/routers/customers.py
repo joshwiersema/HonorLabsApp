@@ -1,13 +1,11 @@
-"""Doctor & Patient customer endpoints with B2BKing group filtering.
+"""Doctor & Patient customer endpoints.
 
-Uses the REAL meta keys from the Honor Labs plugins:
-  Doctor onboarding: hl_npi_number, hl_practice_name, hl_specialty,
-                     hl_referral_code, hl_phone, hl_practice_state,
-                     hl_license_number, hl_application_date
-  Patient portal:    hl_linked_doctor_id, hl_joined_via_code,
-                     hl_patient_phone, hl_patient_verified,
-                     hl_patient_registration_date
-  B2BKing:           b2bking_customergroup, b2bking_account_approved
+Doctors are sourced from the Honor Labs REST API (honor-labs/v1) which
+queries WordPress user meta directly — far more reliable than trying to
+extract custom plugin meta from the WooCommerce customer API.
+
+Patient data still uses the WooCommerce customer API since B2BKing
+group membership is native WC meta.
 """
 
 import asyncio
@@ -60,13 +58,99 @@ def get_customer_group(meta_data: list[dict]) -> str:
     return extract_meta(meta_data, "b2bking_customergroup", "")
 
 
-def is_doctor_applicant(meta_data: list[dict]) -> bool:
-    """Check if a customer registered through the doctor onboarding form.
+# ---------------------------------------------------------------------------
+# Honor Labs REST API helpers
+# ---------------------------------------------------------------------------
 
-    New applicants have hl_application_date set but may NOT yet be in the
-    B2BKing doctor group (group assignment only happens upon approval).
-    """
-    return bool(extract_meta(meta_data, "hl_application_date"))
+
+async def fetch_all_applications(
+    client: WooCommerceClient,
+    status: str = "",
+) -> list[dict]:
+    """Paginate through all doctor applications from the honor-labs REST API."""
+    applications: list[dict] = []
+    page = 1
+    while True:
+        params: dict[str, Any] = {"per_page": 100, "page": page}
+        if status:
+            params["status"] = status
+        try:
+            resp = await client.request(
+                "GET",
+                "honor-labs/v1/doctor-applications",
+                params=params,
+                query_auth=True,
+            )
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                status_code=502, detail=f"Upstream request failed: {exc}"
+            ) from exc
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=resp.status_code,
+                detail=f"Failed to fetch doctor applications: {resp.text[:300]}",
+            )
+        batch = resp.json()
+        if not batch:
+            break
+        applications.extend(batch)
+        total_pages = int(resp.headers.get("X-WP-TotalPages", "1"))
+        if page >= total_pages:
+            break
+        page += 1
+    return applications
+
+
+def transform_application(app: dict) -> dict:
+    """Transform a WordPress doctor-application into the Doctor type the frontend expects."""
+    status_raw = app.get("status", "pending")
+    if status_raw == "approved":
+        doctor_status = "approved"
+    elif status_raw == "rejected":
+        doctor_status = "rejected"
+    else:
+        doctor_status = "pending"
+
+    return {
+        "id": app.get("id") or app.get("user_id"),
+        "email": app.get("email", ""),
+        "first_name": app.get("first_name", ""),
+        "last_name": app.get("last_name", ""),
+        "username": app.get("email", ""),
+        "date_created": app.get("date_applied", ""),
+        "avatar_url": "",
+        "billing": {},
+        "shipping": {},
+        "npi_number": app.get("npi_number", ""),
+        "practice_name": app.get("practice_name", ""),
+        "specialty": app.get("specialty", ""),
+        "referral_code": app.get("referral_code", ""),
+        "phone": app.get("phone", ""),
+        "practice_state": app.get("practice_state", ""),
+        "license_number": app.get("license_number", ""),
+        "application_date": app.get("date_applied", ""),
+        "doctor_status": doctor_status,
+        "customer_group": DOCTOR_GROUP,
+        "orders_count": 0,
+        "total_spent": "0",
+    }
+
+
+def matches_search(record: dict, search: str) -> bool:
+    if not search:
+        return True
+    q = search.lower()
+    fields = [
+        record.get("first_name", ""),
+        record.get("last_name", ""),
+        record.get("email", ""),
+    ]
+    return any(q in f.lower() for f in fields)
+
+
+# ---------------------------------------------------------------------------
+# WooCommerce helpers (used for patients and order enrichment)
+# ---------------------------------------------------------------------------
 
 
 async def fetch_all_customers(
@@ -105,7 +189,7 @@ async def fetch_all_customers(
 async def fetch_customer_orders(
     client: WooCommerceClient, customer_id: int
 ) -> list[dict]:
-    """Fetch all completed/processing orders for a customer."""
+    """Fetch all orders for a customer."""
     orders: list[dict] = []
     page = 1
     while True:
@@ -133,52 +217,6 @@ async def fetch_customer_orders(
     return orders
 
 
-def build_doctor_summary(customer: dict, orders: list[dict] | None = None) -> dict:
-    """Transform a raw WC customer into a structured doctor dict."""
-    meta = customer.get("meta_data", [])
-    # B2BKing uses 'b2bking_account_approved' with values 'yes' / 'no'
-    b2b_approved = extract_meta(meta, "b2bking_account_approved", "")
-    if b2b_approved == "yes":
-        doctor_status = "approved"
-    elif b2b_approved == "no":
-        doctor_status = "pending"
-    else:
-        # No B2BKing approval meta at all — treat as pending
-        doctor_status = "pending"
-
-    result: dict[str, Any] = {
-        "id": customer.get("id"),
-        "email": customer.get("email", ""),
-        "first_name": customer.get("first_name", ""),
-        "last_name": customer.get("last_name", ""),
-        "username": customer.get("username", ""),
-        "date_created": customer.get("date_created", ""),
-        "avatar_url": customer.get("avatar_url", ""),
-        "billing": customer.get("billing", {}),
-        "shipping": customer.get("shipping", {}),
-        # Doctor-specific fields (hl_ prefix from doctor-onboarding plugin)
-        "npi_number": extract_meta(meta, "hl_npi_number"),
-        "practice_name": extract_meta(meta, "hl_practice_name"),
-        "specialty": extract_meta(meta, "hl_specialty"),
-        "referral_code": extract_meta(meta, "hl_referral_code"),
-        "phone": extract_meta(meta, "hl_phone"),
-        "practice_state": extract_meta(meta, "hl_practice_state"),
-        "license_number": extract_meta(meta, "hl_license_number"),
-        "application_date": extract_meta(meta, "hl_application_date"),
-        "doctor_status": doctor_status,
-        "customer_group": DOCTOR_GROUP,
-    }
-    if orders is not None:
-        result["orders_count"] = len(orders)
-        result["total_spent"] = str(
-            sum(float(o.get("total", 0)) for o in orders)
-        )
-    else:
-        result["orders_count"] = 0
-        result["total_spent"] = "0"
-    return result
-
-
 def build_patient_summary(customer: dict, doctor_name: str = "") -> dict:
     """Transform a raw WC customer into a structured patient dict."""
     meta = customer.get("meta_data", [])
@@ -192,7 +230,6 @@ def build_patient_summary(customer: dict, doctor_name: str = "") -> dict:
         "avatar_url": customer.get("avatar_url", ""),
         "billing": customer.get("billing", {}),
         "shipping": customer.get("shipping", {}),
-        # Patient-specific fields (hl_ prefix from patient-portal plugin)
         "linked_doctor_id": extract_meta(meta, "hl_linked_doctor_id"),
         "referral_code_used": extract_meta(meta, "hl_joined_via_code"),
         "patient_phone": extract_meta(meta, "hl_patient_phone"),
@@ -203,19 +240,6 @@ def build_patient_summary(customer: dict, doctor_name: str = "") -> dict:
         "orders_count": int(customer.get("orders_count", 0)),
         "total_spent": customer.get("total_spent", "0.00"),
     }
-
-
-def matches_search(customer: dict, search: str) -> bool:
-    if not search:
-        return True
-    q = search.lower()
-    fields = [
-        customer.get("first_name", ""),
-        customer.get("last_name", ""),
-        customer.get("email", ""),
-        customer.get("username", ""),
-    ]
-    return any(q in f.lower() for f in fields)
 
 
 # ---------------------------------------------------------------------------
@@ -236,29 +260,35 @@ class CustomerStats(BaseModel):
 
 @router.get("/doctors")
 async def list_doctors(search: str = Query("", description="Filter by name or email")):
-    """List all doctors (B2BKing group OR doctor onboarding applicants) with order stats."""
+    """List all doctors from the Honor Labs doctor-applications REST API.
+
+    Fetches applications from honor-labs/v1/doctor-applications which
+    queries WordPress user meta directly, then enriches approved doctors
+    with order stats from the WooCommerce API.
+    """
     client = get_client()
-    all_customers = await fetch_all_customers(client)
-    seen_ids: set[int] = set()
-    doctors_raw: list[dict] = []
-    for c in all_customers:
-        meta = c.get("meta_data", [])
-        # Include if in doctor group OR if they applied through doctor onboarding
-        is_doctor = (
-            get_customer_group(meta) == DOCTOR_GROUP
-            or is_doctor_applicant(meta)
-        )
-        if is_doctor and matches_search(c, search):
-            cid = c.get("id")
-            if cid not in seen_ids:
-                seen_ids.add(cid)
-                doctors_raw.append(c)
 
-    async def _enrich(doc: dict) -> dict:
-        orders = await fetch_customer_orders(client, doc["id"])
-        return build_doctor_summary(doc, orders)
+    # Fetch all doctor applications from the honor-labs REST API
+    applications = await fetch_all_applications(client)
 
-    doctors = list(await asyncio.gather(*[_enrich(d) for d in doctors_raw]))
+    # Filter by search
+    if search:
+        applications = [a for a in applications if matches_search(a, search)]
+
+    # Transform to Doctor type
+    doctors = [transform_application(a) for a in applications]
+
+    # Enrich approved doctors with order data in parallel
+    async def _enrich_orders(doctor: dict) -> dict:
+        if doctor["doctor_status"] == "approved":
+            orders = await fetch_customer_orders(client, doctor["id"])
+            doctor["orders_count"] = len(orders)
+            doctor["total_spent"] = str(
+                sum(float(o.get("total", 0)) for o in orders)
+            )
+        return doctor
+
+    doctors = list(await asyncio.gather(*[_enrich_orders(d) for d in doctors]))
     return {"doctors": doctors, "total": len(doctors)}
 
 
@@ -267,34 +297,52 @@ async def get_doctor(doctor_id: int):
     """Get a single doctor with linked patients and orders."""
     client = get_client()
 
+    # Fetch the doctor application from honor-labs API
     try:
-        resp = await client.get(f"wc/v3/customers/{doctor_id}")
+        resp = await client.request(
+            "GET",
+            "honor-labs/v1/doctor-applications",
+            params={"per_page": 100},
+            query_auth=True,
+        )
     except httpx.RequestError as exc:
         raise HTTPException(
             status_code=502, detail=f"Upstream request failed: {exc}"
         ) from exc
+
     if resp.status_code != 200:
         raise HTTPException(
             status_code=resp.status_code,
-            detail=f"Customer not found or WC error: {resp.text[:300]}",
+            detail=f"Failed to fetch doctor data: {resp.text[:300]}",
         )
-    customer = resp.json()
 
-    meta = customer.get("meta_data", [])
-    if get_customer_group(meta) != DOCTOR_GROUP and not is_doctor_applicant(meta):
-        raise HTTPException(status_code=404, detail="Customer is not a doctor.")
+    # Find this doctor in the applications list
+    app_data = None
+    for app in resp.json():
+        if app.get("id") == doctor_id or app.get("user_id") == doctor_id:
+            app_data = app
+            break
 
+    if not app_data:
+        raise HTTPException(status_code=404, detail="Doctor not found.")
+
+    doctor = transform_application(app_data)
+
+    # Fetch orders for this doctor
     orders = await fetch_customer_orders(client, doctor_id)
-    doctor = build_doctor_summary(customer, orders)
+    doctor["orders_count"] = len(orders)
+    doctor["total_spent"] = str(
+        sum(float(o.get("total", 0)) for o in orders)
+    )
 
-    # Fetch linked patients
+    # Fetch linked patients via WC API
     all_customers = await fetch_all_customers(client)
     patients_raw = [
         c for c in all_customers
         if get_customer_group(c.get("meta_data", [])) == PATIENT_GROUP
         and extract_meta(c.get("meta_data", []), "hl_linked_doctor_id") == str(doctor_id)
     ]
-    doctor_name = f"{customer.get('first_name', '')} {customer.get('last_name', '')}".strip()
+    doctor_name = f"{doctor.get('first_name', '')} {doctor.get('last_name', '')}".strip()
     patients = [build_patient_summary(p, doctor_name) for p in patients_raw]
 
     order_summaries = [
@@ -516,28 +564,30 @@ async def reject_doctor(doctor_id: int):
 
 @router.get("/stats", response_model=CustomerStats)
 async def customer_stats():
-    """Return aggregate counts: doctors, patients, pending doctors."""
+    """Return aggregate counts: doctors, patients, pending doctors.
+
+    Doctor counts come from the honor-labs REST API (reliable).
+    Patient counts come from the WooCommerce customer API.
+    """
     client = get_client()
-    all_customers = await fetch_all_customers(client)
 
-    doctor_count = 0
-    patient_count = 0
-    pending_doctors = 0
-    seen_doctor_ids: set[int] = set()
+    # Fetch doctor applications and patient customers in parallel
+    apps_task = fetch_all_applications(client)
+    customers_task = fetch_all_customers(client)
+    applications, all_customers = await asyncio.gather(apps_task, customers_task)
 
-    for c in all_customers:
-        meta = c.get("meta_data", [])
-        group = get_customer_group(meta)
-        cid = c.get("id")
-        is_doc = group == DOCTOR_GROUP or is_doctor_applicant(meta)
-        if is_doc and cid not in seen_doctor_ids:
-            seen_doctor_ids.add(cid)
-            doctor_count += 1
-            b2b_approved = extract_meta(meta, "b2bking_account_approved", "")
-            if b2b_approved != "yes":
-                pending_doctors += 1
-        elif group == PATIENT_GROUP:
-            patient_count += 1
+    # Count doctors by status
+    doctor_count = len(applications)
+    pending_doctors = sum(
+        1 for a in applications
+        if a.get("status", "pending") in ("pending", "", None)
+    )
+
+    # Count patients from WC customers
+    patient_count = sum(
+        1 for c in all_customers
+        if get_customer_group(c.get("meta_data", [])) == PATIENT_GROUP
+    )
 
     return CustomerStats(
         doctor_count=doctor_count,
